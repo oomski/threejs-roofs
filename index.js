@@ -41,7 +41,7 @@ ctrls.enableDamping = true;
 const gltfLoader = new GLTFLoader();
 
 const busshelterGlb = await gltfLoader.loadAsync(
-  `${import.meta.env.BASE_URL}Day 12 - ChurchRoof.glb`
+  `${import.meta.env.BASE_URL}ChurchRoof.glb`
 );
 const busshelter = busshelterGlb.scene;
 
