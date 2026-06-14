@@ -3,6 +3,9 @@ import getLayer from "./getLayer.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
 
 const w = window.innerWidth;
@@ -10,14 +13,14 @@ const h = window.innerHeight;
 const scene = new THREE.Scene();
 
 const camera = new THREE.PerspectiveCamera(75, w / h, 0.1, 1000);
-camera.position.x = 5;
+camera.position.x = 3;
 
 // make canvas transparent
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(w, h);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.6;
+renderer.toneMappingExposure = 0.5;
 
 // ensure correct color/output encoding and physically correct lights
 renderer.outputEncoding = THREE.sRGBEncoding;
@@ -105,18 +108,14 @@ busshelter.position.sub(center); // move model so its center is at (0,0,0) relat
 pivot.add(busshelter);
 
 // start rotated 270 degrees around Y
-pivot.rotation.y = -0.7 * Math.PI / 2; // 270deg
+pivot.rotation.y = 2.9 * Math.PI / 2; // 270deg
 
 // pivot.rotation.z = 0.08 * Math.PI / 2; // 270deg
 
-// bounce setup: 180° total (min = 270° - 180° = 90°, max = 270°)
+// bounce setup replaced with continuous spin
 const clock = new THREE.Clock();
-const rotationSpeed = 0.3; // radians per second (~0.005 per frame at 60fps)
-const startAngle = pivot.rotation.y; // 270deg
-const fullRange = 0.5 * Math.PI; // 180° in radians
-const minAngle = startAngle - fullRange; // 90deg
-const maxAngle = startAngle; // 270deg
-let rotationDirection = -1; // start moving away from 270° in the same direction as before
+const rotationSpeed = 0.3; // radians per second
+let rotationDirection = 1; // 1 = clockwise, -1 = counterclockwise
 
 // update controls target to the pivot center
 ctrls.target.set(0, 0, 0);
@@ -142,33 +141,43 @@ canvas.addEventListener('pointerout', () => { isRotating = true; }, { passive: t
 canvas.addEventListener('pointerleave', () => { isRotating = true; }, { passive: true });
 
 
-const hemiLight = new THREE.HemisphereLight(0xffffff, 0x666666, 2);
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x666666, 1);
 scene.add(hemiLight);
 // add ambient fill light (no directional light)
-const ambient = new THREE.AmbientLight(0xffffff, 2);
+const ambient = new THREE.AmbientLight(0xffffff, 1);
 scene.add(ambient);
+
+// create postprocessing composer with a subtle bloom
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomParams = {
+  strength: 0.05, // intensity of bloom
+  radius: 0,
+  threshold: 1,
+};
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), bloomParams.strength, bloomParams.radius, bloomParams.threshold);
+composer.addPass(bloomPass);
 
 
 function animate() {
   requestAnimationFrame(animate);
   const delta = clock.getDelta();
 
-  // bounce between minAngle and maxAngle when allowed
+  // continuous spin when allowed
   if (isRotating) {
     pivot.rotation.y += rotationDirection * rotationSpeed * delta;
 
-    if (pivot.rotation.y <= minAngle) {
-      pivot.rotation.y = minAngle;
-      rotationDirection = 1;
-    } else if (pivot.rotation.y >= maxAngle) {
-      pivot.rotation.y = maxAngle;
-      rotationDirection = -1;
+    // keep angle normalized to avoid growing floats over very long runs
+    const twoPi = Math.PI * 2;
+    if (pivot.rotation.y > twoPi || pivot.rotation.y < -twoPi) {
+      pivot.rotation.y = pivot.rotation.y % twoPi;
     }
   }
 
   // update controls (damping) before render
   ctrls.update();
-  renderer.render(scene, camera);
+  // render using composer to include bloom
+  composer.render();
 }
 
 animate();
@@ -177,5 +186,6 @@ function handleWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
 }
 window.addEventListener('resize', handleWindowResize, false);
